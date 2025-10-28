@@ -26,3 +26,9 @@ platform.info
 
 # Files made by Csmith-generated programs.
 vol_addr.txt
+build
+CMakeFiles
+.cache/clangd/index
+cmake_install.cmake
+CMakeCache.txt
+compile_commands.json
