@@ -744,11 +744,11 @@ int run_on_platform_device(cl_platform_id *platform, cl_device_id *device,
 
   // Create the kernel
   cl_kernel kernel;
-  if (!binary_input)
-    kernel = clCreateKernel(program, "entry", &err);
-  else {
+  kernel = clCreateKernel(program, "entry", &err);
+
+  if (cl_error_check(err, "Error creating explicit kernel"))
     kernel = clCreateKernel(program, "__clang_ocl_kern_imp_entry", &err);
-  }
+
   if (cl_error_check(err, "Error creating kernel"))
     return 1;
 
