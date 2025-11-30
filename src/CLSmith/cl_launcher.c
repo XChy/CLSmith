@@ -61,12 +61,12 @@ typedef cl_ulong RES_TYPE;
 // User input.
 const char *file;
 const char *args_file = NULL;
-size_t binary_size = 0;
 int device_index = 0;
 int platform_index = 0;
 char *device_name_given = "";
 char *include_path = ".";
 bool adapt_backsmith = false;
+bool binary_input = false;
 bool debug_build = false;
 bool disable_opts = false;
 bool disable_fake = false;
@@ -134,8 +134,8 @@ void print_help() {
   fprintf(stderr, "Optional flags are:\n");
   fprintf(stderr, "  -i PATH --include_path PATH               Include path "
                   "for kernels (. by default)\n"); // FGG
-  fprintf(stderr, "  -b N    --binary N                        Compiles the "
-                  "kernel to binary, allocating N bytes\n");
+  fprintf(stderr, "   ---binary                        Treat the "
+                  "kernel as binary\n");
   fprintf(stderr, "  -l N    --locals N                        A string with "
                   "comma-separated values representing the number of "
                   "work-units per group per dimension\n");
@@ -611,13 +611,11 @@ int run_on_platform_device(cl_platform_id *platform, cl_device_id *device,
   }
 
   size_t source_size;
-  if (!binary_size) {
-    char temp[1024];
-    while (!feof(source))
-      fread(temp, 1, 1024, source);
-    source_size = ftell(source);
-    rewind(source);
+  fseek(source, 0, SEEK_END);
+  source_size = ftell(source);
+  rewind(source);
 
+  if (!binary_input) {
     source_text = (char *)calloc(1, source_size + 1);
     if (source_text == NULL) {
       fprintf(stderr, "Failed to calloc %ld bytes.\n", source_size);
@@ -626,8 +624,8 @@ int run_on_platform_device(cl_platform_id *platform, cl_device_id *device,
     fread(source_text, 1, source_size, source);
     fclose(source);
   } else {
-    buf = (char *)malloc(binary_size);
-    source_size = fread(buf, 1, binary_size, source);
+    buf = (char *)malloc(source_size);
+    fread(buf, 1, source_size, source);
     fclose(source);
   }
 
@@ -651,7 +649,7 @@ int run_on_platform_device(cl_platform_id *platform, cl_device_id *device,
   // Create a kernel from the source program. This involves turning the source
   // into a program object, compiling it and creating a kernel object from it.
   cl_program program;
-  if (!binary_size) {
+  if (!binary_input) {
     const char *const_source = source_text;
     program = clCreateProgramWithSource(context, 1, &const_source, NULL, &err);
   } else {
@@ -745,9 +743,8 @@ int run_on_platform_device(cl_platform_id *platform, cl_device_id *device,
   }
 
   // Create the kernel
-  // TODO: add option for backsmith program
   cl_kernel kernel;
-  if (!binary_size)
+  if (!binary_input)
     kernel = clCreateKernel(program, "entry", &err);
   else {
     kernel = clCreateKernel(program, "__clang_ocl_kern_imp_entry", &err);
@@ -932,9 +929,11 @@ int run_on_platform_device(cl_platform_id *platform, cl_device_id *device,
   for (i = 0; i < total_threads; ++i)
     printf("%#" PRIx64 ",", read_result[i]);
 
-  printf("\n=======BackSmith Result=======\n");
-  for (i = 0; i < total_threads; ++i)
-    printf("%#" PRIx64 ",", read_backsmith_result[i]);
+  if (adapt_backsmith) {
+    printf("\n=======BackSmith Result=======\n");
+    for (i = 0; i < total_threads; ++i)
+      printf("%#" PRIx64 ",", read_backsmith_result[i]);
+  }
 
   free(read_result);
   free(read_backsmith_result);
@@ -991,10 +990,6 @@ int parse_arg(char *arg, char *val) {
     platform_index = atoi(val);
     return 2;
   }
-  if (!strcmp(arg, "-b") || !strcmp(arg, "--binary")) {
-    binary_size = atoi(val);
-    return 1;
-  }
   if (!strcmp(arg, "-l") || !strcmp(arg, "--locals")) {
     local_dims = (char *)malloc((strlen(val) + 1) * sizeof(char));
     strcpy(local_dims, val);
@@ -1016,6 +1011,10 @@ int parse_arg(char *arg, char *val) {
       if (include_path[ii] == '\\')
         include_path[ii] = '/';
 
+    return 1;
+  }
+  if (!strcmp(arg, "---binary")) {
+    binary_input = true;
     return 1;
   }
   if (!strcmp(arg, "--atomics")) {
